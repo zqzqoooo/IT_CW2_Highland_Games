@@ -164,7 +164,7 @@ function Navbar({ setPage, user, setUser, events, setCurrentEventId }) {
         <div className="container mx-auto px-6 h-20 flex items-center justify-between">
           <div className="cursor-pointer flex items-center w-48" onClick={() => setPage('Home')}>
              <svg className="w-8 h-8 text-blue-700 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
-             <span className="text-xl font-extrabold text-gray-900 tracking-tighter">PAISLEY<span className="text-blue-600">GAMES</span></span>
+             <span className="text-xl font-extrabold text-gray-900 tracking-tighter">HIGHLAND<span className="text-blue-600">GAMES</span></span>
           </div>
           <div className="hidden md:flex items-center justify-center flex-1 h-full">
             <div className="flex space-x-8 h-full items-center">
@@ -578,7 +578,7 @@ export default function App() {
       <Navbar setPage={setPage} user={user} setUser={setUser} events={events} setCurrentEventId={setCurrentEventId} />
       <main className="flex-grow">{content}</main>
       <footer className="bg-gray-900 text-gray-400 py-12 mt-auto">
-        <div className="container mx-auto px-6 text-center"><p className="text-white font-bold text-lg mb-2">Highland Games 2025</p><p className="text-sm">Proof of Concept for IT CW2</p></div>
+        <div className="container mx-auto px-6 text-center"><p className="text-white font-bold text-lg mb-2">Paisley Highland Games 2025</p><p className="text-sm">Proof of Concept for IT CW2</p></div>
       </footer>
     </div>
   );
