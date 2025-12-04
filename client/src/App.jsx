@@ -472,11 +472,38 @@ function AdminDashboard() {
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    // 1. 限制文件大小
+    const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+    if (file.size > MAX_SIZE) {
+      alert('❌ File is too large! Please choose an image under 5MB.');
+      e.target.value = ''; // 清空 input
+      return;
+    }
+
     const fd = new FormData();
     fd.append('file', file);
-    const res = await fetch('/api/upload', { method: 'POST', body: fd });
-    const data = await res.json();
-    setEditingItem(prev => ({ ...prev, image: data.filePath }));
+
+    try {
+      // 加载提示
+      console.log('Uploading...');
+      
+      const res = await fetch('/api/upload', { method: 'POST', body: fd });
+      
+      // 检查服务器响应状态
+      if (!res.ok) {
+        // 如果 Nginx 拦截了或者后端报错
+        throw new Error(`Upload failed with status: ${res.status}`);
+      }
+
+      const data = await res.json();
+      setEditingItem(prev => ({ ...prev, image: data.filePath }));
+      alert('✅ Image uploaded successfully!');
+      
+    } catch (error) {
+      console.error(error);
+      alert('❌ Upload failed. The file might be too large for the server.');
+    }
   };
 
   const handleEditSubmit = async (e) => { 
