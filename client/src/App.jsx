@@ -3,32 +3,46 @@ import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
-// --- Leaflet Icon Fix ---
+// --- Fix Leaflet Icons --- 修复 Leaflet 默认图标丢失问题
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 let DefaultIcon = L.icon({ iconUrl: icon, shadowUrl: iconShadow, iconSize: [25, 41], iconAnchor: [12, 41] });
 L.Marker.prototype.options.icon = DefaultIcon;
 
-// --- Styles ---
+// --- Styles Injection --- 样式注入
 const STYLES = `
   @keyframes slideDownFade { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
   .animate-menu-drop { animation: slideDownFade 0.3s ease-out forwards; }
-  .scrollbar-hide::-webkit-scrollbar { display: none; }
-  .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+  /* Hide scrollbar but allow scrolling --- 隐藏滚动条但允许滚动 */
+  .hide-scroll::-webkit-scrollbar { display: none; }
+  .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
   .leaflet-container { width: 100%; height: 100%; border-radius: 0.75rem; z-index: 10; }
 `;
 
-// --- Components ---
+// --- Components --- 组件部分
 
+// Map Picker Component (for Admin) --- 地图选点组件（用于管理员）
 function LocationPicker({ lat, lng, onLocationSelect }) {
+  // Ensure valid numbers for coordinates --- 确保坐标为有效数字
   const safeLat = isNaN(parseFloat(lat)) ? 55.8456 : parseFloat(lat);
   const safeLng = isNaN(parseFloat(lng)) ? -4.4239 : parseFloat(lng);
   const [position, setPosition] = useState([safeLat, safeLng]);
+
+  // Update position when props change --- 当属性变化时更新位置
   useEffect(() => { setPosition([safeLat, safeLng]); }, [lat, lng]);
+
+  // Handle map click events --- 处理地图点击事件
   const MapEvents = () => {
-    useMapEvents({ click(e) { const { lat, lng } = e.latlng; setPosition([lat, lng]); onLocationSelect(lat, lng); }, });
+    useMapEvents({ 
+      click(e) { 
+        const { lat, lng } = e.latlng; 
+        setPosition([lat, lng]); 
+        onLocationSelect(lat, lng); 
+      }, 
+    });
     return null;
   };
+
   return (
     <MapContainer center={position} zoom={13} scrollWheelZoom={false}>
       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='© OpenStreetMap' />
@@ -38,6 +52,71 @@ function LocationPicker({ lat, lng, onLocationSelect }) {
   );
 }
 
+// Core Carousel Component (Netflix-style click-to-scroll) --- 核心轮播组件（Netflix 风格点击滚动）
+function JsCarousel({ title, items, renderItem, onViewAll }) {
+  const containerRef = useRef(null);
+  
+  // Scroll distance: Card width (320px) + Margin (24px) --- 滑动距离：卡片宽度 (320px) + 间距 (24px)
+  const SCROLL_AMOUNT = 344; 
+
+  // Auto-reset scroll position on data load --- 数据加载时自动重置滚动位置
+  useEffect(() => {
+    const resetScroll = () => {
+      if (containerRef.current) {
+        containerRef.current.scrollLeft = 0;
+      }
+    };
+    requestAnimationFrame(resetScroll);
+    const timer = setTimeout(resetScroll, 50);
+    return () => clearTimeout(timer);
+  }, [items]);
+
+  // Handle slide logic --- 处理滑动逻辑
+  const slide = (offset) => {
+    if (containerRef.current) {
+      const currentScroll = containerRef.current.scrollLeft;
+      // If scrolling left near start, reset to 0 --- 如果向左滑动且接近起点，归零
+      if (offset < 0 && currentScroll < SCROLL_AMOUNT) {
+         containerRef.current.scrollTo({ left: 0, behavior: 'smooth' });
+      } else {
+         containerRef.current.scrollBy({ left: offset, behavior: 'smooth' });
+      }
+    }
+  };
+
+  return (
+    <div className="w-full py-10 group bg-white border-b border-gray-100">
+      <div className="container mx-auto px-6 flex justify-between items-center mb-6">
+        <h2 className="text-3xl font-bold text-gray-900 tracking-tight">{title}</h2>
+        
+        {/* Navigation Buttons --- 导航按钮组 */}
+        <div className="flex items-center gap-3">
+           <button onClick={() => slide(-SCROLL_AMOUNT)} className="p-2 rounded-full border border-gray-200 hover:border-blue-600 hover:text-blue-600 transition-colors text-gray-400 bg-white shadow-sm">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+           </button>
+           <button onClick={() => slide(SCROLL_AMOUNT)} className="p-2 rounded-full border border-gray-200 hover:border-blue-600 hover:text-blue-600 transition-colors text-gray-400 bg-white shadow-sm">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+           </button>
+           {onViewAll && <div className="h-6 w-px bg-gray-200 mx-2"></div>}
+           {onViewAll && (<button onClick={onViewAll} className="text-sm font-bold text-blue-600 hover:text-blue-800 uppercase tracking-wide transition-colors">View All</button>)}
+        </div>
+      </div>
+
+      {/* Scroll Container --- 滚动容器 */}
+      <div ref={containerRef} className="flex overflow-x-auto hide-scroll w-full pb-12">
+         <div className="w-6 shrink-0" /> {/* Left Spacer --- 左侧垫片 */}
+         {items.map((item) => (
+           <div key={item.id} className="shrink-0 mr-6">
+             {renderItem(item)}
+           </div>
+         ))}
+         <div className="w-6 shrink-0" /> {/* Right Spacer --- 右侧垫片 */}
+      </div>
+    </div>
+  );
+}
+
+// MegaMenu Component --- 下拉大菜单组件
 function MegaMenu({ events, setPage, setCurrentEventId, closeMenu, onMouseEnter, onMouseLeave }) {
   return (
     <div className="absolute top-full left-0 w-full bg-white shadow-xl z-50 border-t animate-menu-drop" onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
@@ -56,17 +135,28 @@ function MegaMenu({ events, setPage, setCurrentEventId, closeMenu, onMouseEnter,
   );
 }
 
+// Navbar Component --- 导航栏组件
 function Navbar({ setPage, user, setUser, events, setCurrentEventId }) {
   const [showEventsMenu, setShowEventsMenu] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
   const timeoutRef = useRef(null);
+
+  // Auto-hide navbar on scroll --- 滚动时自动隐藏导航栏
   useEffect(() => {
-    const handleScroll = () => { const currentScrollY = window.scrollY; if (currentScrollY > 60 && currentScrollY > lastScrollY) setIsVisible(false); else setIsVisible(true); setLastScrollY(currentScrollY); };
-    window.addEventListener('scroll', handleScroll, { passive: true }); return () => window.removeEventListener('scroll', handleScroll);
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      if (currentScrollY > 60 && currentScrollY > lastScrollY) setIsVisible(false); else setIsVisible(true);
+      setLastScrollY(currentScrollY);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
   }, [lastScrollY]);
+
+  // Delay hiding menu for UX --- 延时隐藏菜单以提升用户体验
   const handleMouseEnter = () => { if (timeoutRef.current) clearTimeout(timeoutRef.current); setShowEventsMenu(true); setIsVisible(true); };
   const handleMouseLeave = () => { timeoutRef.current = setTimeout(() => { setShowEventsMenu(false); }, 200); };
+  
   return (
     <>
       <style>{STYLES}</style>
@@ -100,17 +190,23 @@ function Navbar({ setPage, user, setUser, events, setCurrentEventId }) {
   );
 }
 
+// Hero Carousel (2.35:1) --- 首页大图轮播
 function HeroCarousel({ slides, setPage }) {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [startX, setStartX] = useState(0);
   const [dragOffset, setDragOffset] = useState(0);
+  
+  // Auto-play logic --- 自动播放逻辑
   const nextSlide = () => setCurrentSlide((prev) => (prev + 1) % (slides.length || 1));
   const prevSlide = () => setCurrentSlide((prev) => (prev - 1 + (slides.length || 1)) % (slides.length || 1));
   useEffect(() => { if (isDragging) return; const timer = setInterval(nextSlide, 6000); return () => clearInterval(timer); }, [slides.length, isDragging]);
+  
+  // Drag/Swipe logic --- 拖拽/滑动逻辑
   const handleDragStart = (e) => { setIsDragging(true); setStartX(e.touches ? e.touches[0].clientX : e.clientX); };
   const handleDragMove = (e) => { if (!isDragging) return; setDragOffset((e.touches ? e.touches[0].clientX : e.clientX) - startX); };
   const handleDragEnd = () => { setIsDragging(false); if (dragOffset < -50) nextSlide(); if (dragOffset > 50) prevSlide(); setDragOffset(0); };
+
   if (!slides.length) return <div className="w-full aspect-[2.35/1] bg-gray-200 animate-pulse" />;
   return (
     <div className="relative w-full aspect-[2.35/1] overflow-hidden cursor-grab active:cursor-grabbing bg-gray-900 group" onMouseDown={handleDragStart} onMouseMove={handleDragMove} onMouseUp={handleDragEnd} onMouseLeave={handleDragEnd} onTouchStart={handleDragStart} onTouchMove={handleDragMove} onTouchEnd={handleDragEnd}>
@@ -119,13 +215,14 @@ function HeroCarousel({ slides, setPage }) {
           <div key={slide.id} className="w-full h-full bg-cover bg-center relative" style={{ backgroundImage: `url('${slide.image}')`, width: `${100 / slides.length}%` }}>
             <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
             <div className="relative z-10 h-full flex flex-col items-start justify-end text-left text-white p-8 md:p-16 container mx-auto">
-              <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-2 drop-shadow-md tracking-tight opacity-90">{slide.title}</h1>
-              <p className="text-sm md:text-lg mb-6 font-light drop-shadow-sm max-w-2xl opacity-80">{slide.subtitle}</p>
-              <button onClick={() => setPage(slide.action)} className="bg-white/10 hover:bg-white/30 backdrop-blur-md border border-white/50 text-white px-6 py-2 rounded-lg text-sm font-semibold transition">{slide.button_text}</button>
+              <h1 className="text-2xl md:text-4xl lg:text-5xl font-bold mb-2 drop-shadow-md tracking-tight opacity-90 leading-tight">{slide.title}</h1>
+              <p className="text-sm md:text-lg mb-6 font-light drop-shadow-sm max-w-2xl opacity-80 hidden md:block">{slide.subtitle}</p>
+              <button onClick={() => setPage(slide.action)} className="bg-white/10 hover:bg-white/30 backdrop-blur-md border border-white/50 text-white px-4 py-2 md:px-6 md:py-2 rounded-lg text-xs md:text-sm font-semibold transition">{slide.button_text}</button>
             </div>
           </div>
         ))}
       </div>
+      {/* Carousel Controls --- 轮播控制按钮 */}
       <button onClick={(e) => { e.stopPropagation(); prevSlide(); }} className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/20 hover:bg-black/50 text-white p-2 rounded-full backdrop-blur-sm transition opacity-0 group-hover:opacity-100 z-30"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg></button>
       <button onClick={(e) => { e.stopPropagation(); nextSlide(); }} className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/20 hover:bg-black/50 text-white p-2 rounded-full backdrop-blur-sm transition opacity-0 group-hover:opacity-100 z-30"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg></button>
       <div className="absolute bottom-8 right-8 flex space-x-2 z-20">{slides.map((_, idx) => (<button key={idx} onClick={(e) => { e.stopPropagation(); setCurrentSlide(idx); }} className={`h-1.5 transition-all duration-300 rounded-full ${currentSlide === idx ? 'w-8 bg-white' : 'w-4 bg-white/30'}`} />))}</div>
@@ -133,48 +230,9 @@ function HeroCarousel({ slides, setPage }) {
   );
 }
 
-function FeaturedEventsRow({ events, setPage, setCurrentEventId }) {
-  return (
-    <div className="w-full py-8">
-      <div className="container mx-auto px-6 flex justify-between items-end mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">Featured Competitions</h2>
-        <button onClick={() => setPage('Events')} className="text-blue-600 text-sm font-semibold hover:underline">View All</button>
-      </div>
-      <div className="flex overflow-x-auto pb-8 snap-x scrollbar-hide -mx-6 px-6 space-x-6">
-        {events.map((event) => (
-          <div key={event.id} onClick={() => { setCurrentEventId(event.id); setPage('EventDetail'); }} className="flex-shrink-0 w-80 snap-start bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 cursor-pointer group overflow-hidden border border-gray-100">
-            <div className="h-48 overflow-hidden bg-gray-200"><img src={event.image} alt={event.name} className="w-full h-full object-cover group-hover:scale-105 transition duration-500" /></div>
-            <div className="p-5"><h3 className="text-lg font-bold mb-2 group-hover:text-blue-600">{event.name}</h3><p className="text-gray-500 text-sm line-clamp-2">{event.description}</p></div>
-          </div>
-        ))}
-        <div className="w-1 shrink-0" />
-      </div>
-    </div>
-  );
-}
+// --- Page Components --- 页面组件
 
-function HeritageRow({ heritage }) {
-  if (!heritage || heritage.length === 0) return null;
-  return (
-    <div className="w-full py-8 bg-gray-50 border-t border-b border-gray-200">
-      <div className="container mx-auto px-6 flex justify-between items-end mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Discover Our Heritage</h2>
-      </div>
-      <div className="flex overflow-x-auto pb-4 snap-x scrollbar-hide -mx-6 px-6 space-x-6">
-        {heritage.map((item) => (
-          <div key={item.id} className="flex-shrink-0 w-96 snap-start bg-white rounded-xl shadow-sm hover:shadow-md transition cursor-default border border-gray-200 overflow-hidden flex">
-            <div className="w-32 h-full flex-shrink-0 bg-gray-200"><img src={item.image} alt={item.title} className="w-full h-full object-cover" /></div>
-            <div className="p-4 flex flex-col justify-center"><h3 className="text-base font-bold text-gray-800 mb-1">{item.title}</h3><p className="text-xs text-gray-500 leading-relaxed">{item.description}</p></div>
-          </div>
-        ))}
-        <div className="w-1 shrink-0" />
-      </div>
-    </div>
-  );
-}
-
-// --- 页面部分 ---
-
+// Event Detail Page --- 赛事详情页
 function EventDetailPage({ eventId, setPage }) {
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -185,6 +243,7 @@ function EventDetailPage({ eventId, setPage }) {
   if (loading) return <div className="text-center py-20">Loading...</div>;
   if (!event) return <div className="text-center py-20">Event not found.</div>;
 
+  // Parse coordinates safely --- 安全解析坐标
   const lat = isNaN(parseFloat(event.lat)) ? 55.8456 : parseFloat(event.lat);
   const lng = isNaN(parseFloat(event.lng)) ? -4.4239 : parseFloat(event.lng);
 
@@ -195,7 +254,7 @@ function EventDetailPage({ eventId, setPage }) {
         <div className="h-80 w-full relative bg-gray-200">
            <img src={event.image} alt={event.name} className="w-full h-full object-cover" />
            <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
-           <h1 className="absolute bottom-8 left-8 text-5xl font-bold text-white shadow-sm">{event.name}</h1>
+           <h1 className="absolute bottom-8 left-8 text-3xl md:text-5xl font-bold text-white shadow-sm">{event.name}</h1>
         </div>
       </div>
       <div className="grid md:grid-cols-3 gap-8">
@@ -227,12 +286,42 @@ function EventDetailPage({ eventId, setPage }) {
   );
 }
 
+// Home Page --- 首页
 function HomePage({ setPage, slides, events, tally, heritage, setCurrentEventId }) {
   return (
     <div>
       <HeroCarousel slides={slides} setPage={setPage} />
-      <FeaturedEventsRow events={events} setPage={setPage} setCurrentEventId={setCurrentEventId} />
-      <HeritageRow heritage={heritage} />
+      
+      {/* Featured Events Section --- 特色赛事部分 */}
+      <JsCarousel 
+        title="Featured Competitions" 
+        items={events} 
+        onViewAll={() => setPage('Events')}
+        renderItem={(event) => (
+          <div 
+            onClick={() => { setCurrentEventId(event.id); setPage('EventDetail'); }} 
+            className="w-80 bg-white rounded-xl shadow-sm hover:shadow-2xl transition-all duration-300 cursor-pointer group overflow-hidden border border-gray-100 h-full"
+          >
+            <div className="h-48 overflow-hidden bg-gray-200"><img src={event.image} alt={event.name} className="w-full h-full object-cover group-hover:scale-110 transition duration-500" /></div>
+            <div className="p-5"><h3 className="text-lg font-bold mb-2 group-hover:text-blue-600">{event.name}</h3><p className="text-gray-500 text-sm line-clamp-2">{event.description}</p></div>
+          </div>
+        )}
+      />
+
+      {/* Heritage Section --- 文化历史部分 */}
+      <div className="bg-gray-50">
+        <JsCarousel 
+          title="Discover Our Heritage" 
+          items={heritage}
+          renderItem={(item) => (
+            <div className="w-96 bg-white rounded-xl shadow-sm hover:shadow-md transition cursor-default border border-gray-200 overflow-hidden flex h-full">
+              <div className="w-32 h-full shrink-0 bg-gray-200"><img src={item.image} alt={item.title} className="w-full h-full object-cover" /></div>
+              <div className="p-4 flex flex-col justify-center"><h3 className="text-base font-bold text-gray-800 mb-1">{item.title}</h3><p className="text-xs text-gray-500 leading-relaxed">{item.description}</p></div>
+            </div>
+          )}
+        />
+      </div>
+      
       <div className="py-16">
         <div className="container mx-auto px-6">
           <h2 className="text-3xl font-bold text-gray-800 mb-8 text-center">Clan Standings</h2>
@@ -256,6 +345,7 @@ function HomePage({ setPage, slides, events, tally, heritage, setCurrentEventId 
   );
 }
 
+// Events List Page --- 所有赛事列表页
 function EventsPage({ events, setCurrentEventId, setPage }) {
   return (
     <div className="container mx-auto px-6 py-12">
@@ -275,52 +365,21 @@ function EventsPage({ events, setCurrentEventId, setPage }) {
   );
 }
 
-// 仅展示修改后的 RegistrationPage 组件，你可以只替换这一部分
+// Registration Page --- 报名页
 function RegistrationPage({ events }) {
   const [formData, setFormData] = useState({ name: '', email: '', type: 'individual' });
   const [selectedEvents, setSelectedEvents] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState(null);
-
+  
+  // Handle submission logic (sends one request with array) --- 处理提交逻辑（发送包含数组的单个请求）
   const handleSubmit = async (e) => {
-    e.preventDefault(); 
-    setIsSubmitting(true);
-    
-    // 获取选中的项目数组
+    e.preventDefault(); setIsSubmitting(true);
     const eventsToRegister = Object.keys(selectedEvents).filter(name => selectedEvents[name]);
-    
-    if (eventsToRegister.length === 0) { 
-        setIsSubmitting(false); 
-        return setMessage({ type: 'error', text: 'Please select at least one event.' }); 
-    }
-
-    try {
-      // 修改：只发送一次请求，包含 eventNames 数组
-      const response = await fetch('/api/register', { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        // 注意：这里字段名变成了 eventNames (复数)
-        body: JSON.stringify({ ...formData, eventNames: eventsToRegister }) 
-      });
-
-      if (!response.ok) throw new Error('Failed');
-      
-      const result = await response.json();
-      
-      setMessage({ type: 'success', text: `Success! Registered for ${eventsToRegister.length} events. Please check your email for details.` });
-      
-      // 重置表单
-      setFormData({ name: '', email: '', type: 'individual' }); 
-      setSelectedEvents({});
-      
-    } catch (error) { 
-      console.error(error);
-      setMessage({ type: 'error', text: 'Error submitting registration. Please try again.' }); 
-    } finally { 
-      setIsSubmitting(false); 
-    }
+    if (eventsToRegister.length === 0) { setIsSubmitting(false); return setMessage({ type: 'error', text: 'Select at least one event.' }); }
+    try { const response = await fetch('/api/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...formData, eventNames: eventsToRegister }) }); if (!response.ok) throw new Error('Failed'); setMessage({ type: 'success', text: 'Submitted! A confirmation email has been sent.' }); setFormData({ name: '', email: '', type: 'individual' }); setSelectedEvents({}); } catch (error) { setMessage({ type: 'error', text: 'Error submitting form.' }); } finally { setIsSubmitting(false); }
   };
-
+  
   return (
     <div className="container mx-auto px-6 py-12 max-w-2xl">
       <h1 className="text-4xl font-bold text-center mb-10 text-gray-900">Registration</h1>
@@ -340,6 +399,7 @@ function RegistrationPage({ events }) {
   );
 }
 
+// Login Page --- 登录/注册页
 function LoginPage({ setUser, setPage }) {
   const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState({ username: '', email: '', password: '' });
@@ -371,6 +431,7 @@ function LoginPage({ setUser, setPage }) {
   );
 }
 
+// User Dashboard --- 用户仪表盘
 function UserDashboard({ user }) {
   const [myRegs, setMyRegs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -387,6 +448,7 @@ function UserDashboard({ user }) {
   );
 }
 
+// Admin Dashboard --- 管理员仪表盘
 function AdminDashboard() {
   const [tab, setTab] = useState('registrations'); 
   const [registrations, setRegistrations] = useState([]);
@@ -397,7 +459,12 @@ function AdminDashboard() {
   const [editType, setEditType] = useState(null); 
 
   useEffect(() => { fetchData(); }, []);
-  const fetchData = () => { fetch('/api/admin/registrations').then(r => r.json()).then(setRegistrations); fetch('/api/events').then(r => r.json()).then(setEvents); fetch('/api/slides').then(r => r.json()).then(setSlides); fetch('/api/heritage').then(r => r.json()).then(setHeritage); };
+  const fetchData = () => { 
+    fetch('/api/admin/registrations').then(r => r.json()).then(setRegistrations); 
+    fetch('/api/events').then(r => r.json()).then(setEvents); 
+    fetch('/api/slides').then(r => r.json()).then(setSlides);
+    fetch('/api/heritage').then(r => r.json()).then(setHeritage); 
+  };
   const updateRegStatus = async (id, status) => { await fetch(`/api/admin/registrations/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) }); fetchData(); };
   
   const handleEditSubmit = async (e) => { 
@@ -472,6 +539,7 @@ function AdminDashboard() {
   );
 }
 
+// --- Main App Component --- 主应用组件
 export default function App() {
   const [page, setPage] = useState('Home');
   const [user, setUser] = useState(null);
@@ -480,6 +548,8 @@ export default function App() {
   const [tally, setTally] = useState([]);
   const [heritage, setHeritage] = useState([]); 
   const [currentEventId, setCurrentEventId] = useState(null);
+
+  // Load data on app start --- 应用启动时加载数据
   useEffect(() => {
     document.title = "Paisley Highland Games 2025";
     const load = () => { 
@@ -490,6 +560,8 @@ export default function App() {
     };
     load();
   }, [page]);
+
+  // Simple router logic --- 简单的路由逻辑
   let content;
   switch (page) {
     case 'Home': content = <HomePage setPage={setPage} slides={slides} events={events} tally={tally} heritage={heritage} setCurrentEventId={setCurrentEventId} />; break;
