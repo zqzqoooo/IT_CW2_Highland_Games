@@ -465,17 +465,33 @@ function AdminDashboard() {
     fetch('/api/slides').then(r => r.json()).then(setSlides);
     fetch('/api/heritage').then(r => r.json()).then(setHeritage); 
   };
+
   const updateRegStatus = async (id, status) => { await fetch(`/api/admin/registrations/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) }); fetchData(); };
+  const deleteItem = async (id, type) => { if (!confirm('Are you sure?')) return; await fetch(`/api/admin/${type}/${id}`, { method: 'DELETE' }); fetchData(); };
   
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch('/api/upload', { method: 'POST', body: fd });
+    const data = await res.json();
+    setEditingItem(prev => ({ ...prev, image: data.filePath }));
+  };
+
   const handleEditSubmit = async (e) => { 
     e.preventDefault(); 
-    let endpoint = '';
-    if (editType === 'event') endpoint = `/api/admin/events/${editingItem.id}`;
-    if (editType === 'slide') endpoint = `/api/admin/slides/${editingItem.id}`;
-    if (editType === 'heritage') endpoint = `/api/admin/heritage/${editingItem.id}`;
+    let endpoint = `/api/admin/${editType}`;
+    if (editingItem.id) endpoint += `/${editingItem.id}`; // Update
+    const method = editingItem.id ? 'PUT' : 'POST'; // Create or Update
 
-    await fetch(endpoint, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editingItem) }); 
-    setEditingItem(null); setEditType(null); fetchData(); alert('Update successful!'); 
+    await fetch(endpoint, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editingItem) }); 
+    setEditingItem(null); setEditType(null); fetchData(); alert('Success!'); 
+  };
+
+  const openCreateModal = (type) => {
+    setEditType(type);
+    setEditingItem({ name: '', title: '', description: '', subtitle: '', button_text: '', image: '', event_date: '', event_time: '', location: '', lat: 55.8456, lng: -4.4239 });
   };
 
   return (
@@ -488,23 +504,58 @@ function AdminDashboard() {
           ))}
         </div>
       </div>
+
       <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden min-h-[500px]">
+        
+        {/* Add New Button (Except for Registrations) */}
+        {tab !== 'registrations' && (
+          <div className="p-6 border-b bg-gray-50 flex justify-end">
+            <button onClick={() => openCreateModal(tab === 'slides' ? 'slides' : tab === 'events' ? 'events' : 'heritage')} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-bold text-sm">+ Add New Item</button>
+          </div>
+        )}
+
         {tab === 'registrations' && (
           <table className="min-w-full">
             <thead className="bg-gray-50 border-b"><tr><th className="px-6 py-4 text-left font-semibold text-gray-600">User</th><th className="px-6 py-4 text-left font-semibold text-gray-600">Event</th><th className="px-6 py-4 text-center font-semibold text-gray-600">Status</th><th className="px-6 py-4 text-center font-semibold text-gray-600">Actions</th></tr></thead>
             <tbody className="divide-y divide-gray-200">{registrations.map(reg => (<tr key={reg.id} className="hover:bg-gray-50"><td className="px-6 py-4 font-medium">{reg.user_name} <span className="block text-xs text-gray-500 font-normal">{reg.email}</span></td><td className="px-6 py-4">{reg.event_name}</td><td className="px-6 py-4 text-center"><span className={`px-2 py-1 rounded-full text-xs font-bold ${reg.status === 'approved' ? 'bg-green-100 text-green-700' : reg.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{reg.status}</span></td><td className="px-6 py-4 text-center space-x-2"><button onClick={() => updateRegStatus(reg.id, 'approved')} className="text-green-600 hover:text-green-900 text-sm font-bold">Approve</button><button onClick={() => updateRegStatus(reg.id, 'rejected')} className="text-red-600 hover:text-red-900 text-sm font-bold">Reject</button></td></tr>))}</tbody>
           </table>
         )}
-        {tab === 'events' && (<div className="p-6 grid gap-4">{events.map(ev => (<div key={ev.id} className="flex items-center justify-between border-b pb-4 last:border-0"><div className="flex items-center space-x-4"><div className="w-12 h-12 bg-gray-200 rounded overflow-hidden"><img src={ev.image} className="w-full h-full object-cover" /></div><div><h4 className="font-bold">{ev.name}</h4><p className="text-xs text-gray-500 line-clamp-1">{ev.description}</p></div></div><button onClick={() => { setEditingItem(ev); setEditType('event'); }} className="text-blue-600 font-medium hover:underline">Edit</button></div>))}</div>)}
-        {tab === 'slides' && (<div className="p-6 grid gap-4">{slides.map(slide => (<div key={slide.id} className="flex items-center justify-between border-b pb-4 last:border-0"><div className="flex items-center space-x-4"><div className="w-16 h-10 bg-gray-200 rounded overflow-hidden"><img src={slide.image} className="w-full h-full object-cover" /></div><div><h4 className="font-bold text-sm">{slide.title}</h4><p className="text-xs text-gray-500">{slide.subtitle}</p></div></div><button onClick={() => { setEditingItem(slide); setEditType('slide'); }} className="text-blue-600 font-medium hover:underline">Edit</button></div>))}</div>)}
-        {tab === 'heritage' && (<div className="p-6 grid gap-4">{heritage.map(h => (<div key={h.id} className="flex items-center justify-between border-b pb-4 last:border-0"><div className="flex items-center space-x-4"><div className="w-12 h-12 bg-gray-200 rounded overflow-hidden"><img src={h.image} className="w-full h-full object-cover" /></div><div><h4 className="font-bold">{h.title}</h4><p className="text-xs text-gray-500 line-clamp-1">{h.description}</p></div></div><button onClick={() => { setEditingItem(h); setEditType('heritage'); }} className="text-blue-600 font-medium hover:underline">Edit</button></div>))}</div>)}
+        
+        {/* Generic List for Events/Slides/Heritage */}
+        {['events', 'slides', 'heritage'].includes(tab) && (
+          <div className="p-6 grid gap-4">
+            {(tab === 'events' ? events : tab === 'slides' ? slides : heritage).map(item => (
+              <div key={item.id} className="flex items-center justify-between border-b pb-4 last:border-0">
+                <div className="flex items-center space-x-4">
+                   <div className="w-16 h-10 bg-gray-200 rounded overflow-hidden"><img src={item.image} className="w-full h-full object-cover" /></div>
+                   <div><h4 className="font-bold text-sm">{item.name || item.title}</h4></div>
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => { setEditingItem(item); setEditType(tab === 'slides' ? 'slide' : tab === 'events' ? 'event' : 'heritage'); }} className="text-blue-600 font-medium hover:underline">Edit</button>
+                  <button onClick={() => deleteItem(item.id, tab)} className="text-red-600 font-medium hover:underline">Delete</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
+
+      {/* Edit/Create Modal */}
       {editingItem && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
           <div className="bg-white rounded-2xl p-8 max-w-2xl w-full shadow-2xl h-[90vh] overflow-y-auto">
-            <h3 className="text-2xl font-bold mb-6 capitalize">Edit {editType}</h3>
+            <h3 className="text-2xl font-bold mb-6 capitalize">{editingItem.id ? 'Edit' : 'Create New'} {editType}</h3>
             <form onSubmit={handleEditSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto">
-              {editType === 'event' && (<>
+              
+              {/* Image Upload Field (Common) */}
+              <div>
+                 <label className="text-sm font-bold text-gray-700">Upload Image</label>
+                 <input type="file" className="w-full mt-1" onChange={handleFileUpload} />
+                 <input type="text" className="w-full border p-2 rounded mt-1 bg-gray-100" value={editingItem.image} readOnly placeholder="Image path will appear here..." />
+              </div>
+
+              {/* Specific Fields */}
+              {(editType === 'events' || editType === 'event') && (<>
                 <div><label className="text-sm font-bold text-gray-700">Name</label><input className="w-full border p-2 rounded" value={editingItem.name} onChange={e => setEditingItem({...editingItem, name: e.target.value})} /></div>
                 <div><label className="text-sm font-bold text-gray-700">Description</label><textarea rows="3" className="w-full border p-2 rounded" value={editingItem.description} onChange={e => setEditingItem({...editingItem, description: e.target.value})} /></div>
                 <div className="grid grid-cols-2 gap-4">
@@ -513,24 +564,23 @@ function AdminDashboard() {
                 </div>
                 <div><label className="text-sm font-bold text-gray-700">Location Name</label><input className="w-full border p-2 rounded" value={editingItem.location || ''} onChange={e => setEditingItem({...editingItem, location: e.target.value})} /></div>
                 <div>
-                  <label className="text-sm font-bold text-gray-700 mb-2 block">Map Location (Click to update)</label>
+                  <label className="text-sm font-bold text-gray-700 mb-2 block">Map Location</label>
                   <div className="h-64 rounded-xl overflow-hidden border border-gray-300"><LocationPicker lat={editingItem.lat} lng={editingItem.lng} onLocationSelect={(lat, lng) => setEditingItem({...editingItem, lat, lng})} /></div>
-                  <div className="flex gap-4 mt-2 text-xs text-gray-500"><span>Lat: {Number(editingItem.lat || 0).toFixed(6)}</span><span>Lng: {Number(editingItem.lng || 0).toFixed(6)}</span></div>
                 </div>
-                <div><label className="text-sm font-bold text-gray-700">Image Path</label><input className="w-full border p-2 rounded" value={editingItem.image} onChange={e => setEditingItem({...editingItem, image: e.target.value})} /></div>
               </>)}
-              {editType === 'slide' && (<>
+
+              {(editType === 'slides' || editType === 'slide') && (<>
                 <div><label className="text-sm font-bold text-gray-700">Title</label><input className="w-full border p-2 rounded" value={editingItem.title} onChange={e => setEditingItem({...editingItem, title: e.target.value})} /></div>
                 <div><label className="text-sm font-bold text-gray-700">Subtitle</label><input className="w-full border p-2 rounded" value={editingItem.subtitle} onChange={e => setEditingItem({...editingItem, subtitle: e.target.value})} /></div>
                 <div><label className="text-sm font-bold text-gray-700">Button Text</label><input className="w-full border p-2 rounded" value={editingItem.button_text} onChange={e => setEditingItem({...editingItem, button_text: e.target.value})} /></div>
-                <div><label className="text-sm font-bold text-gray-700">Image Path</label><input className="w-full border p-2 rounded" value={editingItem.image} onChange={e => setEditingItem({...editingItem, image: e.target.value})} /></div>
               </>)}
-              {editType === 'heritage' && (<>
+
+              {(editType === 'heritage') && (<>
                 <div><label className="text-sm font-bold text-gray-700">Title</label><input className="w-full border p-2 rounded" value={editingItem.title} onChange={e => setEditingItem({...editingItem, title: e.target.value})} /></div>
                 <div><label className="text-sm font-bold text-gray-700">Description</label><textarea rows="3" className="w-full border p-2 rounded" value={editingItem.description} onChange={e => setEditingItem({...editingItem, description: e.target.value})} /></div>
-                <div><label className="text-sm font-bold text-gray-700">Image Path</label><input className="w-full border p-2 rounded" value={editingItem.image} onChange={e => setEditingItem({...editingItem, image: e.target.value})} /></div>
               </>)}
-              <div className="flex justify-end space-x-3 mt-6"><button type="button" onClick={() => { setEditingItem(null); setEditType(null); }} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button><button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">Save Changes</button></div>
+
+              <div className="flex justify-end space-x-3 mt-6"><button type="button" onClick={() => { setEditingItem(null); setEditType(null); }} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button><button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">Save</button></div>
             </form>
           </div>
         </div>
