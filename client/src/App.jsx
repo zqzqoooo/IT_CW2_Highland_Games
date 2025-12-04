@@ -578,7 +578,7 @@ export default function App() {
       <Navbar setPage={setPage} user={user} setUser={setUser} events={events} setCurrentEventId={setCurrentEventId} />
       <main className="flex-grow">{content}</main>
       <footer className="bg-gray-900 text-gray-400 py-12 mt-auto">
-        <div className="container mx-auto px-6 text-center"><p className="text-white font-bold text-lg mb-2">Paisley Highland Games 2025</p><p className="text-sm">Proof of Concept for COMP10020</p></div>
+        <div className="container mx-auto px-6 text-center"><p className="text-white font-bold text-lg mb-2">Highland Games 2025</p><p className="text-sm">Proof of Concept for IT CW2</p></div>
       </footer>
     </div>
   );
