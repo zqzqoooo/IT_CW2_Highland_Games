@@ -403,16 +403,23 @@ function RegistrationPage({ events }) {
 function LoginPage({ setUser, setPage }) {
   const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState({ username: '', email: '', password: '' });
+  const [agreed, setAgreed] = useState(false); // GDPR State
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
   const handleSubmit = async (e) => {
     e.preventDefault(); setError(''); setSuccess('');
+    
     if (isLogin) {
+      // Login Logic (No GDPR check needed for login usually, but needed for signup)
       try { const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: formData.username, password: formData.password }) }); const data = await res.json(); if (data.success) { setUser(data.user); setPage(data.user.role === 'admin' ? 'Admin' : 'UserDashboard'); } else { setError(data.message || 'Invalid credentials'); } } catch { setError('Server error'); }
     } else {
+      // Signup Logic - Check GDPR
+      if (!agreed) { setError('You must agree to the terms to sign up.'); return; }
       try { const res = await fetch('/api/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formData) }); const data = await res.json(); if (data.success) { setSuccess('Account created! Please log in.'); setIsLogin(true); } else { setError(data.message || 'Signup failed'); } } catch { setError('Server error'); }
     }
   };
+
   return (
     <div className="container mx-auto px-6 py-20 flex justify-center">
       <div className="w-full max-w-md bg-white p-10 rounded-2xl shadow-2xl border border-gray-100">
@@ -421,11 +428,20 @@ function LoginPage({ setUser, setPage }) {
           <div><label className="block text-gray-700 font-medium mb-2">Username / Email</label><input type="text" required className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} placeholder={isLogin ? "Username or Email" : "Pick a username"} /></div>
           {!isLogin && (<div><label className="block text-gray-700 font-medium mb-2">Email Address</label><input type="email" required className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} /></div>)}
           <div><label className="block text-gray-700 font-medium mb-2">Password</label><input type="password" required className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} /></div>
+          
+          {/* GDPR Checkbox (Only for Signup) */}
+          {!isLogin && (
+            <div className="flex items-start">
+              <input id="gdpr-signup" type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} className="mt-1 w-5 h-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300" />
+              <label htmlFor="gdpr-signup" className="ml-3 text-xs text-gray-500">I accept the <span className="text-blue-600 underline">Terms of Service</span> and <span className="text-blue-600 underline">Privacy Policy</span>.</label>
+            </div>
+          )}
+
           {error && <p className="text-red-500 text-center text-sm">{error}</p>}
           {success && <p className="text-green-600 text-center text-sm">{success}</p>}
           <button type="submit" className="w-full bg-gray-900 text-white py-3 rounded-lg font-bold hover:bg-black transition">{isLogin ? 'Login' : 'Sign Up'}</button>
         </form>
-        <div className="mt-6 text-center text-sm"><p className="text-gray-500">{isLogin ? "Don't have an account? " : "Already have an account? "}<button onClick={() => { setIsLogin(!isLogin); setError(''); setSuccess(''); }} className="text-blue-600 font-bold hover:underline">{isLogin ? "Sign Up" : "Login"}</button></p></div>
+        <div className="mt-6 text-center text-sm"><p className="text-gray-500">{isLogin ? "Don't have an account? " : "Already have an account? "}<button onClick={() => { setIsLogin(!isLogin); setError(''); setSuccess(''); setAgreed(false); }} className="text-blue-600 font-bold hover:underline">{isLogin ? "Sign Up" : "Login"}</button></p></div>
       </div>
     </div>
   );

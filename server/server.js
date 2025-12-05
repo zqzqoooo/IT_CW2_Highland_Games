@@ -8,6 +8,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { generateRegistrationEmail } = require('./utils/emailTemplate');
+const bcrypt = require('bcrypt');
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -99,15 +100,48 @@ app.get('/api/heritage', async (req, res) => { try { const [r] = await db.query(
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
   try {
-    const [admin] = await db.query('SELECT * FROM admins WHERE username = ? AND password = ?', [username, password]);
-    if (admin.length > 0) return res.json({ success: true, user: { username: admin[0].username, role: 'admin' } });
-    const [user] = await db.query('SELECT * FROM users WHERE (email = ? OR username = ?) AND password = ?', [username, username, password]);
-    if (user.length > 0) return res.json({ success: true, user: { username: user[0].username, email: user[0].email, role: 'user' } });
+    // Helper function to verify password (supports both hash and plain text for backward compatibility)
+    const verifyPassword = async (inputPwd, storedPwd) => {
+      if (storedPwd.startsWith('$2b$')) {
+        return await bcrypt.compare(inputPwd, storedPwd); // Check hash --- 检查哈希
+      } else {
+        return inputPwd === storedPwd; // Fallback for old plain text (e.g. admin) --- 兼容旧明文
+      }
+    };
+
+    // 1. Check Admin
+    const [admin] = await db.query('SELECT * FROM admins WHERE username = ?', [username]);
+    if (admin.length > 0) {
+      const isValid = await verifyPassword(password, admin[0].password);
+      if (isValid) return res.json({ success: true, user: { username: admin[0].username, role: 'admin' } });
+    }
+
+    // 2. Check User
+    const [user] = await db.query('SELECT * FROM users WHERE email = ? OR username = ?', [username, username]);
+    if (user.length > 0) {
+      const isValid = await verifyPassword(password, user[0].password);
+      if (isValid) return res.json({ success: true, user: { username: user[0].username, email: user[0].email, role: 'user' } });
+    }
+
     res.status(401).json({ success: false, message: 'Invalid credentials' });
   } catch(e) { res.status(500).json(e); }
 });
 
-app.post('/api/signup', async (req, res) => { try { await db.query('INSERT INTO users (username, email, password) VALUES (?, ?, ?)', [req.body.username, req.body.email, req.body.password]); res.json({success:true}); } catch(e) { if(e.code==='ER_DUP_ENTRY') res.status(400).json({message:'Email exists'}); else res.status(500).json(e); } });
+app.post('/api/signup', async (req, res) => {
+  try {
+    // Hash password before saving --- 保存前加密密码
+    const hashedPassword = await bcrypt.hash(req.body.password, 10);
+    
+    await db.query('INSERT INTO users (username, email, password) VALUES (?, ?, ?)', 
+      [req.body.username, req.body.email, hashedPassword]
+    );
+    res.json({ success: true });
+  } catch(e) { 
+    if(e.code==='ER_DUP_ENTRY') res.status(400).json({message:'Email exists'}); 
+    else res.status(500).json(e); 
+  }
+});
+
 app.get('/api/user/my-registrations', async (req, res) => { try { const [r] = await db.query(`SELECT r.*, e.event_date, e.event_time, e.location FROM registrations r LEFT JOIN events e ON r.event_name = e.name WHERE r.email = ? ORDER BY r.created_at DESC`, [req.query.email]); res.json(r); } catch(e) { res.status(500).json(e); } });
 
 // 3. Registration (Updated with decoupled template)
