@@ -28,124 +28,73 @@ const pool = mysql.createPool({
 
 const db = pool.promise();
 
-// --- email config (From .env) --- 邮件配置
+// --- email config ---
 const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: process.env.EMAIL_PORT,
+  host: process.env.EMAIL_HOST || "sg-smtp.qcloudmail.com",
+  port: process.env.EMAIL_PORT || 465,
   secure: true,
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
+    user: process.env.EMAIL_USER || "HighlandGames@heshanws.top",
+    pass: process.env.EMAIL_PASS || "zq710609ZQ."
   }
 });
 
-transporter.verify((error) => {
-  if (error) console.log('❌ SMTP Connection Error:', error);
-  else console.log('✅ SMTP Server is ready');
-});
+transporter.verify((err) => console.log(err ? '❌ SMTP Error' : '✅ SMTP Ready'));
 
-// --- Image Upload Configuration --- 图像上传配置
-// 修改点 1: 路径改为 images
+// --- Image Upload Configuration ---
 const uploadDirDist = path.join(__dirname, '../client/dist/images');
 const uploadDirPublic = path.join(__dirname, '../client/public/images');
 
-// 确保两个目录都存在
 [uploadDirDist, uploadDirPublic].forEach(dir => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 });
 
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) { 
-    // 默认先存到 dist/images (生产环境读取)
-    cb(null, uploadDirDist); 
-  },
-  filename: function (req, file, cb) {
+  destination: (req, file, cb) => cb(null, uploadDirDist),
+  filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     cb(null, uniqueSuffix + path.extname(file.originalname));
   }
 });
 
-const upload = multer({ 
-  storage: storage,
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
-});
+const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 
 // --- Helper: Delete Old Image ---
-const deleteOldImage = (relativePath) => {
-  // 修改点 2: 检查路径是否包含 /images/
-  if (!relativePath || !relativePath.includes('/images/')) return;
-  const filename = path.basename(relativePath);
-  
-  // 同时删除两个目录下的文件
+const deleteOldImage = (imagePath) => {
+  if (!imagePath) return;
+  const filename = path.basename(imagePath);
+  if (imagePath.startsWith('http')) return; // Don't delete external images
+
   const paths = [
     path.join(uploadDirDist, filename),
     path.join(uploadDirPublic, filename)
   ];
-  
+
   paths.forEach(p => {
     if (fs.existsSync(p)) {
-      fs.unlink(p, err => { if(!err) console.log(`Deleted: ${p}`); });
+      fs.unlink(p, err => { if(!err) console.log(`🗑️ Deleted: ${filename}`); });
     }
   });
 };
 
-// ==========================================
-// API Routes
-// ==========================================
+// ========================== Routes ==========================
 
 // 1. Upload
 app.post('/api/upload', upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ message: 'No file' });
-  
-  // 修改点 3: 上传成功后，立即复制一份到 public/images (开发环境读取)
   const targetPath = path.join(uploadDirPublic, req.file.filename);
-  fs.copyFile(req.file.path, targetPath, (err) => {
-    if (err) console.error('Copy to public failed:', err);
-  });
-
-  // 返回给前端的路径改为 /images/...
+  fs.copyFile(req.file.path, targetPath, () => {}); 
   res.json({ filePath: `/images/${req.file.filename}` });
 });
 
 // 2. Public GET
 app.get('/api/events', async (req, res) => { try { const [r] = await db.query('SELECT * FROM events'); res.json(r); } catch(e) { res.status(500).send(e); } });
-app.get('/api/events/:id', async (req, res) => { try { const [r] = await db.query('SELECT * FROM events WHERE id = ?', [req.params.id]); if (r.length===0) return res.status(404).json({message:'Not found'}); res.json(r[0]); } catch(e) { res.status(500).json(e); } });
+app.get('/api/events/:id', async (req, res) => { try { const [r] = await db.query('SELECT * FROM events WHERE id = ?', [req.params.id]); if(r.length===0) return res.status(404).json({message:'Not found'}); res.json(r[0]); } catch(e) { res.status(500).json(e); } });
 app.get('/api/slides', async (req, res) => { try { const [r] = await db.query('SELECT * FROM slides'); res.json(r); } catch(e) { res.status(500).send(e); } });
 app.get('/api/tally', async (req, res) => { try { const [r] = await db.query('SELECT * FROM medal_tally'); res.json(r); } catch(e) { res.status(500).send(e); } });
 app.get('/api/heritage', async (req, res) => { try { const [r] = await db.query('SELECT * FROM heritage'); res.json(r); } catch(e) { res.status(500).send(e); } });
 
-// 3. Registration
-app.post('/api/register', async (req, res) => {
-  const { name, email, type, eventName, eventNames } = req.body;
-  let targetEvents = [];
-  if (eventNames && eventNames.length > 0) targetEvents = eventNames;
-  else if (eventName) targetEvents = [eventName];
-  else return res.status(400).json({ message: 'No events' });
-
-  try {
-    const [eventsInfo] = await db.query('SELECT * FROM events WHERE name IN (?)', [targetEvents]);
-    
-    // 修改点 4: 邮件发件人使用环境变量
-    let emailHtml = `<h3>Dear ${name},</h3><p>Registration Confirmed:</p><hr/>`;
-    eventsInfo.forEach(ev => { emailHtml += `<p><strong>${ev.name}</strong><br/>Date: ${ev.event_date}<br/>Loc: ${ev.location}</p>`; });
-    emailHtml += `<p>Status: PENDING.</p>`;
-    
-    transporter.sendMail({ 
-      from: `"Paisley Games" <${process.env.EMAIL_USER}>`, 
-      to: email, 
-      subject: `Registration Confirmed`, 
-      html: emailHtml 
-    }, (err) => { if(err) console.error(err); });
-
-    const inserts = targetEvents.map(evt => db.query('INSERT INTO registrations (user_name, email, type, event_name) VALUES (?, ?, ?, ?)', [name, email, type, evt]));
-    await Promise.all(inserts);
-    res.json({ message: 'Success' });
-  } catch(e) { res.status(500).json(e); }
-});
-
-app.get('/api/check-status', async (req, res) => { try { const [r] = await db.query(`SELECT r.*, e.event_date, e.event_time, e.location FROM registrations r LEFT JOIN events e ON r.event_name = e.name WHERE r.email = ? ORDER BY r.created_at DESC`, [req.query.email]); res.json(r); } catch(e) { res.status(500).json(e); } });
-
-// 4. Auth
+// 3. Auth & Register
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
   try {
@@ -156,58 +105,115 @@ app.post('/api/login', async (req, res) => {
     res.status(401).json({ success: false, message: 'Invalid credentials' });
   } catch(e) { res.status(500).json(e); }
 });
+
 app.post('/api/signup', async (req, res) => { try { await db.query('INSERT INTO users (username, email, password) VALUES (?, ?, ?)', [req.body.username, req.body.email, req.body.password]); res.json({success:true}); } catch(e) { if(e.code==='ER_DUP_ENTRY') res.status(400).json({message:'Email exists'}); else res.status(500).json(e); } });
 app.get('/api/user/my-registrations', async (req, res) => { try { const [r] = await db.query(`SELECT r.*, e.event_date, e.event_time, e.location FROM registrations r LEFT JOIN events e ON r.event_name = e.name WHERE r.email = ? ORDER BY r.created_at DESC`, [req.query.email]); res.json(r); } catch(e) { res.status(500).json(e); } });
 
-// 5. Admin - Registrations
+app.post('/api/register', async (req, res) => {
+  const { name, email, type, eventName, eventNames } = req.body;
+  let targetEvents = eventNames && eventNames.length ? eventNames : [eventName];
+  if (!targetEvents[0]) return res.status(400).json({ message: 'No events' });
+
+  try {
+    const [eventsInfo] = await db.query('SELECT * FROM events WHERE name IN (?)', [targetEvents]);
+    let emailHtml = `<h3>Dear ${name},</h3><p>Registration Confirmed:</p><hr/>`;
+    eventsInfo.forEach(ev => { emailHtml += `<p><strong>${ev.name}</strong><br/>Date: ${ev.event_date}<br/>Loc: ${ev.location}</p>`; });
+    emailHtml += `<p>Status: PENDING.</p>`;
+    
+    transporter.sendMail({ from: `"Paisley Games" <${process.env.EMAIL_USER}>`, to: email, subject: `Registration Confirmed`, html: emailHtml }, (err) => { if(err) console.error(err); });
+
+    const inserts = targetEvents.map(evt => db.query('INSERT INTO registrations (user_name, email, type, event_name) VALUES (?, ?, ?, ?)', [name, email, type, evt]));
+    await Promise.all(inserts);
+    res.json({ message: 'Success' });
+  } catch(e) { res.status(500).json(e); }
+});
+
+// 4. Admin Routes
 app.get('/api/admin/registrations', async (req, res) => { try { const [r] = await db.query('SELECT * FROM registrations ORDER BY created_at DESC'); res.json(r); } catch(e) { res.status(500).json(e); } });
 app.put('/api/admin/registrations/:id', async (req, res) => { try { await db.query('UPDATE registrations SET status = ? WHERE id = ?', [req.body.status, req.params.id]); res.json({ message: 'Updated' }); } catch(e) { res.status(500).json(e); } });
 
-// --- 6. Admin CRUD (Events / Slides / Heritage) ---
+// --- 5. Admin CRUD (Robust Version) ---
+// 核心修复：先查旧数据，合并新数据，再更新。防止 undefined 覆盖导致数据丢失或报错。
 
 // Events
 app.post('/api/admin/events', async (req, res) => {
   const { name, description, image, event_time='', event_date='', location='', lat=55.8456, lng=-4.4239 } = req.body;
   try { await db.query(`INSERT INTO events (name, description, image, event_time, event_date, location, lat, lng) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [name, description, image, event_time, event_date, location, lat, lng]); res.json({message:'Created'}); } catch(e) { res.status(500).json(e); }
 });
+
 app.put('/api/admin/events/:id', async (req, res) => {
   const { name, description, image, event_time, event_date, location, lat, lng } = req.body;
-  try { 
-    const [old] = await db.query('SELECT image FROM events WHERE id = ?', [req.params.id]);
-    if (old.length > 0 && old[0].image !== image) deleteOldImage(old[0].image);
-    await db.query(`UPDATE events SET name=?, description=?, image=?, event_time=?, event_date=?, location=?, lat=?, lng=? WHERE id=?`, [name, description, image, event_time, event_date, location, lat, lng, req.params.id]); 
+  try {
+    // 1. 获取旧数据
+    const [old] = await db.query('SELECT * FROM events WHERE id = ?', [req.params.id]);
+    if (old.length === 0) return res.status(404).json({message: 'Not found'});
+    const current = old[0];
+
+    // 2. 如果上传了新图，删除旧图
+    if (image && current.image && image !== current.image) deleteOldImage(current.image);
+
+    // 3. 智能更新：如果有新值用新值，否则保留旧值 (避免 undefined 覆盖)
+    await db.query(
+      `UPDATE events SET name=?, description=?, image=?, event_time=?, event_date=?, location=?, lat=?, lng=? WHERE id=?`, 
+      [
+        name !== undefined ? name : current.name, 
+        description !== undefined ? description : current.description,
+        image !== undefined ? image : current.image,
+        event_time !== undefined ? event_time : current.event_time,
+        event_date !== undefined ? event_date : current.event_date,
+        location !== undefined ? location : current.location,
+        lat !== undefined ? lat : current.lat,
+        lng !== undefined ? lng : current.lng,
+        req.params.id
+      ]
+    );
     res.json({message:'Updated'}); 
-  } catch(e) { console.error(e); res.status(500).json(e); }
+  } catch(e) { 
+    console.error("Event Update Error:", e); 
+    res.status(500).json(e); 
+  }
 });
+
 app.delete('/api/admin/events/:id', async (req, res) => {
-  try { 
+  try {
     const [old] = await db.query('SELECT image FROM events WHERE id = ?', [req.params.id]);
     if (old.length > 0) deleteOldImage(old[0].image);
-    await db.query('DELETE FROM events WHERE id = ?', [req.params.id]); 
-    res.json({message:'Deleted'}); 
+    await db.query('DELETE FROM events WHERE id = ?', [req.params.id]);
+    res.json({message:'Deleted'});
   } catch(e) { res.status(500).json(e); }
 });
 
 // Slides
 app.post('/api/admin/slides', async (req, res) => {
-  const { title, subtitle, button_text, image } = req.body;
-  try { await db.query(`INSERT INTO slides (title, subtitle, button_text, image) VALUES (?, ?, ?, ?)`, [title, subtitle, button_text, image]); res.json({message:'Created'}); } catch(e) { res.status(500).json(e); }
+  const { title, subtitle, button_text, action, image } = req.body;
+  try { await db.query(`INSERT INTO slides (title, subtitle, button_text, action, image) VALUES (?, ?, ?, ?, ?)`, [title, subtitle, button_text, image]); res.json({message:'Created'}); } catch(e) { res.status(500).json(e); }
 });
 app.put('/api/admin/slides/:id', async (req, res) => {
-  const { title, subtitle, button_text, image } = req.body;
-  try { 
-    const [old] = await db.query('SELECT image FROM slides WHERE id = ?', [req.params.id]);
-    if (old.length > 0 && old[0].image !== image) deleteOldImage(old[0].image);
-    await db.query('UPDATE slides SET title=?, subtitle=?, button_text=?, image=? WHERE id=?', [title, subtitle, button_text, image, req.params.id]); 
-    res.json({message:'Updated'}); 
+  const { title, subtitle, button_text, action, image } = req.body;
+  try {
+    const [old] = await db.query('SELECT * FROM slides WHERE id = ?', [req.params.id]);
+    const current = old[0];
+    if (image && current.image && image !== current.image) deleteOldImage(current.image);
+
+    await db.query('UPDATE slides SET title=?, subtitle=?, button_text=?, action=?, image=? WHERE id=?', 
+      [
+        title !== undefined ? title : current.title,
+        subtitle !== undefined ? subtitle : current.subtitle,
+        button_text !== undefined ? button_text : current.button_text,
+        action !== undefined ? action : current.action,
+        image !== undefined ? image : current.image,
+        req.params.id
+      ]
+    );
+    res.json({message:'Updated'});
   } catch(e) { res.status(500).json(e); }
 });
 app.delete('/api/admin/slides/:id', async (req, res) => {
-  try { 
+  try {
     const [old] = await db.query('SELECT image FROM slides WHERE id = ?', [req.params.id]);
     if (old.length > 0) deleteOldImage(old[0].image);
-    await db.query('DELETE FROM slides WHERE id = ?', [req.params.id]); 
-    res.json({message:'Deleted'}); 
+    await db.query('DELETE FROM slides WHERE id = ?', [req.params.id]);
+    res.json({message:'Deleted'});
   } catch(e) { res.status(500).json(e); }
 });
 
@@ -218,19 +224,28 @@ app.post('/api/admin/heritage', async (req, res) => {
 });
 app.put('/api/admin/heritage/:id', async (req, res) => {
   const { title, description, image } = req.body;
-  try { 
-    const [old] = await db.query('SELECT image FROM heritage WHERE id = ?', [req.params.id]);
-    if (old.length > 0 && old[0].image !== image) deleteOldImage(old[0].image);
-    await db.query('UPDATE heritage SET title=?, description=?, image=? WHERE id=?', [title, description, image, req.params.id]); 
-    res.json({message:'Updated'}); 
+  try {
+    const [old] = await db.query('SELECT * FROM heritage WHERE id = ?', [req.params.id]);
+    const current = old[0];
+    if (image && current.image && image !== current.image) deleteOldImage(current.image);
+
+    await db.query('UPDATE heritage SET title=?, description=?, image=? WHERE id=?', 
+      [
+        title !== undefined ? title : current.title,
+        description !== undefined ? description : current.description,
+        image !== undefined ? image : current.image,
+        req.params.id
+      ]
+    );
+    res.json({message:'Updated'});
   } catch(e) { res.status(500).json(e); }
 });
 app.delete('/api/admin/heritage/:id', async (req, res) => {
-  try { 
+  try {
     const [old] = await db.query('SELECT image FROM heritage WHERE id = ?', [req.params.id]);
     if (old.length > 0) deleteOldImage(old[0].image);
-    await db.query('DELETE FROM heritage WHERE id = ?', [req.params.id]); 
-    res.json({message:'Deleted'}); 
+    await db.query('DELETE FROM heritage WHERE id = ?', [req.params.id]);
+    res.json({message:'Deleted'});
   } catch(e) { res.status(500).json(e); }
 });
 
