@@ -19,10 +19,10 @@ app.use(bodyParser.json());
 
 // --- database connect ---
 const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'password',
-  database: process.env.DB_NAME || 'paisley_games',
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0
@@ -30,14 +30,14 @@ const pool = mysql.createPool({
 
 const db = pool.promise();
 
-// --- email config ---
+// --- email config --- 邮件配置
 const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || "sg-smtp.qcloudmail.com",
-  port: process.env.EMAIL_PORT || 465,
+  host: process.env.EMAIL_HOST,
+  port: process.env.EMAIL_PORT,
   secure: true,
   auth: {
-    user: process.env.EMAIL_USER || "HighlandGames@heshanws.top",
-    pass: process.env.EMAIL_PASS || "zq710609ZQ."
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
   }
 });
 
