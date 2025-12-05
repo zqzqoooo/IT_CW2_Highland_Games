@@ -448,7 +448,7 @@ function UserDashboard({ user }) {
   );
 }
 
-// Admin Dashboard --- 管理员仪表盘
+// Admin Dashboard --- 管理员仪表盘 (修复版：增加 Slide Action 字段)
 function AdminDashboard() {
   const [tab, setTab] = useState('registrations'); 
   const [registrations, setRegistrations] = useState([]);
@@ -472,53 +472,36 @@ function AdminDashboard() {
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
-    // 1. 限制文件大小
-    const MAX_SIZE = 5 * 1024 * 1024; // 5MB
-    if (file.size > MAX_SIZE) {
-      alert('❌ File is too large! Please choose an image under 5MB.');
-      e.target.value = ''; // 清空 input
-      return;
-    }
-
-    const fd = new FormData();
-    fd.append('file', file);
-
+    const MAX_SIZE = 5 * 1024 * 1024; 
+    if (file.size > MAX_SIZE) { alert('❌ File too large (<5MB)'); e.target.value = ''; return; }
+    const fd = new FormData(); fd.append('file', file);
     try {
-      // 加载提示
       console.log('Uploading...');
-      
       const res = await fetch('/api/upload', { method: 'POST', body: fd });
-      
-      // 检查服务器响应状态
-      if (!res.ok) {
-        // 如果 Nginx 拦截了或者后端报错
-        throw new Error(`Upload failed with status: ${res.status}`);
-      }
-
+      if (!res.ok) throw new Error(`Status: ${res.status}`);
       const data = await res.json();
       setEditingItem(prev => ({ ...prev, image: data.filePath }));
-      alert('✅ Image uploaded successfully!');
-      
-    } catch (error) {
-      console.error(error);
-      alert('❌ Upload failed. The file might be too large for the server.');
-    }
+      alert('✅ Uploaded!');
+    } catch (error) { console.error(error); alert('❌ Upload failed'); }
   };
 
   const handleEditSubmit = async (e) => { 
     e.preventDefault(); 
     let endpoint = `/api/admin/${editType}`;
-    if (editingItem.id) endpoint += `/${editingItem.id}`; // Update
-    const method = editingItem.id ? 'PUT' : 'POST'; // Create or Update
-
+    if (editingItem.id) endpoint += `/${editingItem.id}`;
+    const method = editingItem.id ? 'PUT' : 'POST';
     await fetch(endpoint, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editingItem) }); 
     setEditingItem(null); setEditType(null); fetchData(); alert('Success!'); 
   };
 
   const openCreateModal = (type) => {
     setEditType(type);
-    setEditingItem({ name: '', title: '', description: '', subtitle: '', button_text: '', image: '', event_date: '', event_time: '', location: '', lat: 55.8456, lng: -4.4239 });
+    // 修复：初始化数据包含 action 字段
+    setEditingItem({ 
+      name: '', title: '', description: '', subtitle: '', button_text: '', 
+      action: 'Events', // 默认跳转到 Events 页面
+      image: '', event_date: '', event_time: '', location: '', lat: 55.8456, lng: -4.4239 
+    });
   };
 
   return (
@@ -533,8 +516,6 @@ function AdminDashboard() {
       </div>
 
       <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden min-h-[500px]">
-        
-        {/* Add New Button (Except for Registrations) */}
         {tab !== 'registrations' && (
           <div className="p-6 border-b bg-gray-50 flex justify-end">
             <button onClick={() => openCreateModal(tab === 'slides' ? 'slides' : tab === 'events' ? 'events' : 'heritage')} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-bold text-sm">+ Add New Item</button>
@@ -548,7 +529,6 @@ function AdminDashboard() {
           </table>
         )}
         
-        {/* Generic List for Events/Slides/Heritage */}
         {['events', 'slides', 'heritage'].includes(tab) && (
           <div className="p-6 grid gap-4">
             {(tab === 'events' ? events : tab === 'slides' ? slides : heritage).map(item => (
@@ -558,7 +538,7 @@ function AdminDashboard() {
                    <div><h4 className="font-bold text-sm">{item.name || item.title}</h4></div>
                 </div>
                 <div className="flex gap-3">
-                  <button onClick={() => { setEditingItem(item); setEditType(tab === 'slides' ? 'slide' : tab === 'events' ? 'event' : 'heritage'); }} className="text-blue-600 font-medium hover:underline">Edit</button>
+                  <button onClick={() => { setEditingItem(item); setEditType(tab); }} className="text-blue-600 font-medium hover:underline">Edit</button>
                   <button onClick={() => deleteItem(item.id, tab)} className="text-red-600 font-medium hover:underline">Delete</button>
                 </div>
               </div>
@@ -567,21 +547,18 @@ function AdminDashboard() {
         )}
       </div>
 
-      {/* Edit/Create Modal */}
       {editingItem && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
           <div className="bg-white rounded-2xl p-8 max-w-2xl w-full shadow-2xl h-[90vh] overflow-y-auto">
             <h3 className="text-2xl font-bold mb-6 capitalize">{editingItem.id ? 'Edit' : 'Create New'} {editType}</h3>
             <form onSubmit={handleEditSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto">
               
-              {/* Image Upload Field (Common) */}
               <div>
                  <label className="text-sm font-bold text-gray-700">Upload Image</label>
                  <input type="file" className="w-full mt-1" onChange={handleFileUpload} />
-                 <input type="text" className="w-full border p-2 rounded mt-1 bg-gray-100" value={editingItem.image} readOnly placeholder="Image path will appear here..." />
+                 <input type="text" className="w-full border p-2 rounded mt-1 bg-gray-100" value={editingItem.image} readOnly placeholder="Image path..." />
               </div>
 
-              {/* Specific Fields */}
               {(editType === 'events' || editType === 'event') && (<>
                 <div><label className="text-sm font-bold text-gray-700">Name</label><input className="w-full border p-2 rounded" value={editingItem.name} onChange={e => setEditingItem({...editingItem, name: e.target.value})} /></div>
                 <div><label className="text-sm font-bold text-gray-700">Description</label><textarea rows="3" className="w-full border p-2 rounded" value={editingItem.description} onChange={e => setEditingItem({...editingItem, description: e.target.value})} /></div>
@@ -600,6 +577,8 @@ function AdminDashboard() {
                 <div><label className="text-sm font-bold text-gray-700">Title</label><input className="w-full border p-2 rounded" value={editingItem.title} onChange={e => setEditingItem({...editingItem, title: e.target.value})} /></div>
                 <div><label className="text-sm font-bold text-gray-700">Subtitle</label><input className="w-full border p-2 rounded" value={editingItem.subtitle} onChange={e => setEditingItem({...editingItem, subtitle: e.target.value})} /></div>
                 <div><label className="text-sm font-bold text-gray-700">Button Text</label><input className="w-full border p-2 rounded" value={editingItem.button_text} onChange={e => setEditingItem({...editingItem, button_text: e.target.value})} /></div>
+                {/* 修复：增加 Action 字段 */}
+                <div><label className="text-sm font-bold text-gray-700">Action Link</label><input className="w-full border p-2 rounded" value={editingItem.action} onChange={e => setEditingItem({...editingItem, action: e.target.value})} placeholder="e.g. Events or Register" /></div>
               </>)}
 
               {(editType === 'heritage') && (<>

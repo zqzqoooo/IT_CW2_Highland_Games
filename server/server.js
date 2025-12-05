@@ -183,15 +183,28 @@ app.delete('/api/admin/events/:id', async (req, res) => {
   } catch(e) { res.status(500).json(e); }
 });
 
-// Slides
+// Slides: Create, Update, Delete
 app.post('/api/admin/slides', async (req, res) => {
+  // 1. 补全 action 字段
   const { title, subtitle, button_text, action, image } = req.body;
-  try { await db.query(`INSERT INTO slides (title, subtitle, button_text, action, image) VALUES (?, ?, ?, ?, ?)`, [title, subtitle, button_text, image]); res.json({message:'Created'}); } catch(e) { res.status(500).json(e); }
+  try { 
+    // 2. SQL 语句增加 action 字段和对应占位符
+    await db.query(
+      `INSERT INTO slides (title, subtitle, button_text, action, image) VALUES (?, ?, ?, ?, ?)`, 
+      [title, subtitle, button_text, action, image]
+    ); 
+    res.json({message:'Created'}); 
+  } catch(e) { res.status(500).json(e); }
 });
+
 app.put('/api/admin/slides/:id', async (req, res) => {
   const { title, subtitle, button_text, action, image } = req.body;
   try {
     const [old] = await db.query('SELECT * FROM slides WHERE id = ?', [req.params.id]);
+    
+    // 3. 安全检查：防止 ID 不存在导致报错
+    if (old.length === 0) return res.status(404).json({ message: 'Slide not found' });
+    
     const current = old[0];
     if (image && current.image && image !== current.image) deleteOldImage(current.image);
 
@@ -200,7 +213,7 @@ app.put('/api/admin/slides/:id', async (req, res) => {
         title !== undefined ? title : current.title,
         subtitle !== undefined ? subtitle : current.subtitle,
         button_text !== undefined ? button_text : current.button_text,
-        action !== undefined ? action : current.action,
+        action !== undefined ? action : current.action, // 确保这里更新 action
         image !== undefined ? image : current.image,
         req.params.id
       ]
@@ -208,6 +221,7 @@ app.put('/api/admin/slides/:id', async (req, res) => {
     res.json({message:'Updated'});
   } catch(e) { res.status(500).json(e); }
 });
+
 app.delete('/api/admin/slides/:id', async (req, res) => {
   try {
     const [old] = await db.query('SELECT image FROM slides WHERE id = ?', [req.params.id]);
