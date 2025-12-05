@@ -7,6 +7,7 @@ const nodemailer = require('nodemailer');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { generateRegistrationEmail } = require('./utils/emailTemplate');
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -109,23 +110,47 @@ app.post('/api/login', async (req, res) => {
 app.post('/api/signup', async (req, res) => { try { await db.query('INSERT INTO users (username, email, password) VALUES (?, ?, ?)', [req.body.username, req.body.email, req.body.password]); res.json({success:true}); } catch(e) { if(e.code==='ER_DUP_ENTRY') res.status(400).json({message:'Email exists'}); else res.status(500).json(e); } });
 app.get('/api/user/my-registrations', async (req, res) => { try { const [r] = await db.query(`SELECT r.*, e.event_date, e.event_time, e.location FROM registrations r LEFT JOIN events e ON r.event_name = e.name WHERE r.email = ? ORDER BY r.created_at DESC`, [req.query.email]); res.json(r); } catch(e) { res.status(500).json(e); } });
 
+// 3. Registration (Updated with decoupled template)
 app.post('/api/register', async (req, res) => {
   const { name, email, type, eventName, eventNames } = req.body;
-  let targetEvents = eventNames && eventNames.length ? eventNames : [eventName];
-  if (!targetEvents[0]) return res.status(400).json({ message: 'No events' });
+  let targetEvents = [];
+  
+  // 兼容单选和多选
+  if (eventNames && Array.isArray(eventNames) && eventNames.length > 0) {
+    targetEvents = eventNames;
+  } else if (eventName) {
+    targetEvents = [eventName];
+  } else {
+    return res.status(400).json({ message: 'No events selected' });
+  }
 
   try {
+    // 查询详细信息
     const [eventsInfo] = await db.query('SELECT * FROM events WHERE name IN (?)', [targetEvents]);
-    let emailHtml = `<h3>Dear ${name},</h3><p>Registration Confirmed:</p><hr/>`;
-    eventsInfo.forEach(ev => { emailHtml += `<p><strong>${ev.name}</strong><br/>Date: ${ev.event_date}<br/>Loc: ${ev.location}</p>`; });
-    emailHtml += `<p>Status: PENDING.</p>`;
     
-    transporter.sendMail({ from: `"Paisley Games" <${process.env.EMAIL_USER}>`, to: email, subject: `Registration Confirmed`, html: emailHtml }, (err) => { if(err) console.error(err); });
+    // 使用外部文件生成漂亮的 HTML
+    const emailHtml = generateRegistrationEmail(name, eventsInfo);
+    
+    // 发送邮件
+    transporter.sendMail({ 
+      from: `"Paisley Games" <${process.env.EMAIL_USER}>`, 
+      to: email, 
+      subject: `Registration Confirmed - ${eventsInfo.length} Event(s)`, 
+      html: emailHtml // 使用生成好的 HTML
+    }, (err) => { 
+      if(err) console.error('Email failed:', err); 
+      else console.log('Email sent successfully');
+    });
 
+    // 写入数据库
     const inserts = targetEvents.map(evt => db.query('INSERT INTO registrations (user_name, email, type, event_name) VALUES (?, ?, ?, ?)', [name, email, type, evt]));
     await Promise.all(inserts);
+    
     res.json({ message: 'Success' });
-  } catch(e) { res.status(500).json(e); }
+  } catch(e) { 
+    console.error(e);
+    res.status(500).json({ message: 'Server error', error: e.message }); 
+  }
 });
 
 // 4. Admin Routes
