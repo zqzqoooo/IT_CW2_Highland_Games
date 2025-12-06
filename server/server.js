@@ -203,15 +203,15 @@ app.post('/api/admin/events', async (req, res) => {
 app.put('/api/admin/events/:id', async (req, res) => {
   const { name, description, image, event_time, event_date, location, lat, lng } = req.body;
   try {
-    // 1. 获取旧数据
+    // get old data first
     const [old] = await db.query('SELECT * FROM events WHERE id = ?', [req.params.id]);
     if (old.length === 0) return res.status(404).json({message: 'Not found'});
     const current = old[0];
 
-    // 2. 如果上传了新图，删除旧图
+    // if image changed, delete old image
     if (image && current.image && image !== current.image) deleteOldImage(current.image);
 
-    // 3. 智能更新：如果有新值用新值，否则保留旧值 (避免 undefined 覆盖)
+    // update with merged data
     await db.query(
       `UPDATE events SET name=?, description=?, image=?, event_time=?, event_date=?, location=?, lat=?, lng=? WHERE id=?`, 
       [
@@ -221,8 +221,8 @@ app.put('/api/admin/events/:id', async (req, res) => {
         event_time !== undefined ? event_time : current.event_time,
         event_date !== undefined ? event_date : current.event_date,
         location !== undefined ? location : current.location,
-        lat !== undefined ? lat : current.lat,
-        lng !== undefined ? lng : current.lng,
+        lat !== undefined ? lat : current.lat, // keep current lat if undefined
+        lng !== undefined ? lng : current.lng, // keep current lng if undefined
         req.params.id
       ]
     );
